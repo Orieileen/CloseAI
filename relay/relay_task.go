@@ -159,13 +159,13 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.
 	} else {
 		ratio = modelPrice * groupRatio
 	}
-	// FIXME: 临时修补，支持任务仅按次计费
-	if !common.StringsContains(constant.TaskPricePatches, modelName) {
-		if len(info.PriceData.OtherRatios) > 0 {
-			for _, ra := range info.PriceData.OtherRatios {
-				if 1.0 != ra {
-					ratio *= ra
-				}
+
+	applyOtherRatios := len(info.PriceData.OtherRatios) > 0 && !isFixedPriceTaskModel(modelName)
+	// 当模型按次计费（固定单价）时，不再乘以时长/尺寸等附加倍率，避免 0.3 * 秒数 的错误
+	if applyOtherRatios {
+		for _, ra := range info.PriceData.OtherRatios {
+			if 1.0 != ra {
+				ratio *= ra
 			}
 		}
 	}
@@ -215,10 +215,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.
 				//	gRatio = userGroupRatio
 				//}
 				logContent := fmt.Sprintf("操作 %s", info.Action)
-				// FIXME: 临时修补，支持任务仅按次计费
-				if common.StringsContains(constant.TaskPricePatches, modelName) {
+				if isFixedPriceTaskModel(modelName) {
 					logContent = fmt.Sprintf("%s，按次计费", logContent)
-				} else {
+				} else if applyOtherRatios {
 					if len(info.PriceData.OtherRatios) > 0 {
 						var contents []string
 						for key, ra := range info.PriceData.OtherRatios {
@@ -503,4 +502,13 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Progress:   task.Progress,
 		Data:       task.Data,
 	}
+}
+
+// isFixedPriceTaskModel returns true when a task model should use a flat per-call price
+// without multiplying by seconds/size/etc. Keep env patch support for backward compatibility.
+func isFixedPriceTaskModel(modelName string) bool {
+	if common.StringsContains(constant.TaskPricePatches, modelName) {
+		return true
+	}
+	return strings.HasPrefix(modelName, "sora-2")
 }
