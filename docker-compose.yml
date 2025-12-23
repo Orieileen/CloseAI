@@ -6,7 +6,7 @@
 
 services:
   new-api:
-    image: new-api:local
+    image: orieileen/closeai:latest
     build:
       context: .
     container_name: new-api
